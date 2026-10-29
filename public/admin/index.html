@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin – Paws & Stride</title>
+<style>
+:root{--bg:#fbf7f0;--card:#fff;--ink:#2b2a28;--mute:#6f6a62;--accent:#2f7d5b;--accent2:#e9f3ee;--line:#e6dfd2;--warn:#b7791f}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1c1a;--card:#282623;--ink:#f1ede5;--mute:#a8a196;--accent:#59b88c;--accent2:#25362d;--line:#3a3733;--warn:#e0a84a}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+main{max-width:960px;margin:0 auto;padding:20px 14px 60px}
+h1{font-size:1.4rem;margin:0 0 14px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.bar .sp{flex:1}
+button,select{font:inherit;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.stat b{display:block;font-size:1.3rem}
+.stat span{color:var(--mute);font-size:.8rem}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.dow{text-align:center;color:var(--mute);font-size:.75rem;padding:4px 0}
+.day{min-height:72px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:4px;cursor:pointer;overflow:hidden}
+.day.off{opacity:.4}
+.day.today{border-color:var(--accent);border-width:2px}
+.day.sel{background:var(--accent2)}
+.day .n{font-size:.75rem;color:var(--mute)}
+.chip{display:block;font-size:.7rem;border-radius:4px;padding:1px 4px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--accent2);color:var(--ink)}
+.chip.pending{background:transparent;border:1px dashed var(--warn)}
+.chip.cancelled{text-decoration:line-through;opacity:.5}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:14px}
+.bk{border-top:1px solid var(--line);padding:10px 0}
+.bk:first-child{border-top:0}
+.bk small{color:var(--mute);display:block}
+.tag{display:inline-block;font-size:.7rem;padding:1px 8px;border-radius:99px;border:1px solid var(--line);margin-left:6px}
+.msg{padding:14px;border-radius:10px;background:var(--card);border:1px solid var(--line)}
+@media (max-width:560px){.day{min-height:56px}.chip{font-size:.6rem}}
+</style>
+</head>
+<body>
+<main>
+  <h1>🐾 Bookings admin</h1>
+  <div id="app" class="msg">Loading…</div>
+</main>
+<script>
+const API = window.__HATCHABLE__ ? window.__HATCHABLE__.api : "/api";
+const $ = id => document.getElementById(id);
+let all = [], view = "calendar", filter = "all";
+let cur = new Date(); cur.setDate(1);
+let selDay = null;
+const ymd = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+const dayOf = b => String(b.walk_date).slice(0, 10);
+const money = c => "$" + (c / 100).toFixed(2);
+const el = (t, cls, txt) => { const e = document.createElement(t); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+
+async function load() {
+  const r = await fetch(API + "/admin/bookings");
+  if (r.status === 401 || r.status === 403 || r.redirected) {
+    $("app").textContent = "Please sign in to the Hatchable console as the project owner or an admin collaborator, then reload this page.";
+    return;
+  }
+  if (!r.ok) { $("app").textContent = "Couldn't load bookings."; return; }
+  all = await r.json();
+  selDay = ymd(new Date());
+  render();
+}
+
+function visible() { return all.filter(b => filter === "all" || b.status === filter); }
+
+function render() {
+  const app = $("app"); app.className = ""; app.textContent = "";
+  const paid = all.filter(b => b.status === "paid" || b.status === "completed");
+  const stats = el("div", "stats");
+  [["Revenue", money(paid.reduce((s, b) => s + b.price_cents, 0))], ["Paid / done", paid.length], ["Awaiting payment", all.filter(b => b.status === "pending").length], ["Upcoming", all.filter(b => dayOf(b) >= ymd(new Date()) && b.status === "paid").length]]
+    .forEach(([l, v]) => { const s = el("div", "stat"); s.append(el("b", "", v), el("span", "", l)); stats.append(s); });
+  app.append(stats);
+
+  const bar = el("div", "bar");
+  [["calendar", "Calendar"], ["list", "List"]].forEach(([k, l]) => { const b = el("button", view === k ? "on" : "", l); b.onclick = () => { view = k; render(); }; bar.append(b); });
+  bar.append(el("div", "sp"));
+  const sel = el("select");
+  ["all", "pending", "paid", "completed", "cancelled"].forEach(s => { const o = el("option", "", s === "all" ? "All statuses" : s); o.value = s; if (s === filter) o.selected = true; sel.append(o); });
+  sel.onchange = () => { filter = sel.value; render(); };
+  bar.append(sel);
+  app.append(bar);
+
+  if (view === "calendar") renderCal(app); else renderList(app, visible(), "All bookings");
+}
+
+function renderCal(app) {
+  const nav = el("div", "bar");
+  const prev = el("button", "", "‹"), next = el("button", "", "›"), today = el("button", "", "Today");
+  prev.onclick = () => { cur.setMonth(cur.getMonth() - 1); render(); };
+  next.onclick = () => { cur.setMonth(cur.getMonth() + 1); render(); };
+  today.onclick = () => { cur = new Date(); cur.setDate(1); selDay = ymd(new Date()); render(); };
+  nav.append(prev, el("b", "", cur.toLocaleString(undefined, { month: "long", year: "numeric" })), next, el("div", "sp"), today);
+  app.append(nav);
+
+  const g = el("div", "grid");
+  ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach(d => g.append(el("div", "dow", d)));
+  const start = new Date(cur); start.setDate(1 - cur.getDay());
+  const by = {}; visible().forEach(b => (by[dayOf(b)] = by[dayOf(b)] || []).push(b));
+  const todayS = ymd(new Date());
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    const k = ymd(d), c = el("div", "day" + (d.getMonth() !== cur.getMonth() ? " off" : "") + (k === todayS ? " today" : "") + (k === selDay ? " sel" : ""));
+    c.append(el("div", "n", d.getDate()));
+    (by[k] || []).slice(0, 3).forEach(b => c.append(el("span", "chip " + b.status, b.walk_time + " " + b.dog_name)));
+    if ((by[k] || []).length > 3) c.append(el("span", "n", "+" + (by[k].length - 3) + " more"));
+    c.onclick = () => { selDay = k; render(); };
+    g.append(c);
+  }
+  app.append(g);
+  renderList(app, by[selDay] || [], new Date(selDay + "T12:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }));
+}
+
+function renderList(app, rows, title) {
+  const card = el("div", "card");
+  card.append(el("b", "", title));
+  if (!rows.length) card.append(el("small", "", " – nothing booked"));
+  rows.forEach(b => {
+    const r = el("div", "bk");
+    const h = el("div"); h.append(el("b", "", b.walk_time + " · " + b.dog_name + " (" + b.owner_name + ")"), el("span", "tag", b.status));
+    const s1 = el("small", "", dayOf(b) + " · " + b.service + " · " + money(b.price_cents));
+    const s2 = el("small", "", b.address + " · " + b.email + (b.phone ? " · " + b.phone : ""));
+    r.append(h, s1, s2);
+    if (b.dog_notes) r.append(el("small", "", "Notes: " + b.dog_notes));
+    const act = el("div"); act.style.marginTop = "6px";
+    [["paid", "Mark paid"], ["completed", "Complete"], ["cancelled", "Cancel"]].filter(([s]) => s !== b.status).forEach(([s, l]) => {
+      const btn = el("button", "", l); btn.style.marginRight = "6px";
+      btn.onclick = async () => {
+        if (s === "cancelled" && !confirm("Cancel this booking?")) return;
+        const x = await fetch(API + "/admin/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: b.id, status: s }) });
+        if (x.ok) { b.status = s; render(); } else alert("Update failed");
+      };
+      act.append(btn);
+    });
+    r.append(act); card.append(r);
+  });
+  app.append(card);
+}
+load();
+</script>
+</body>
+</html>
