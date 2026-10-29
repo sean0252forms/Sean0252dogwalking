@@ -130,6 +130,8 @@ function renderList(app, rows, title) {
     const s2 = el("small", "", b.address + " · " + b.email + (b.phone ? " · " + b.phone : ""));
     r.append(h, s1, s2);
     if (b.dog_notes) r.append(el("small", "", "Notes: " + b.dog_notes));
+    if (b.refund === "manual") r.append(el("small", "", "Refund needed: the automatic refund failed, so issue it manually in Stripe."));
+    if (b.refund === "none") r.append(el("small", "", "Cancelled after payment with no card payment on file: arrange a refund with the customer."));
     const act = el("div"); act.style.marginTop = "6px";
     [["paid", "Mark paid"], ["completed", "Complete"], ["cancelled", "Cancel"]].filter(([s]) => s !== b.status).forEach(([s, l]) => {
       const btn = el("button", "", l); btn.style.marginRight = "6px";

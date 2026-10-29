@@ -52,6 +52,7 @@ button:disabled{opacity:.6}
   </div>
   <div class="card">
     <h2>3. About you &amp; your dog</h2>
+    <div id="dogpick" style="display:none"><label for="saved">Saved dogs</label><select id="saved"></select></div>
     <div class="row">
       <div><label for="owner">Your name</label><input id="owner" autocomplete="name"></div>
       <div><label for="dog">Dog's name</label><input id="dog"></div>
@@ -61,6 +62,7 @@ button:disabled{opacity:.6}
       <div><label for="phone">Phone (optional)</label><input type="tel" id="phone" autocomplete="tel"></div>
     </div>
     <label for="notes">Notes (leash habits, allergies, gate codes)</label><textarea id="notes" rows="3"></textarea>
+    <label id="saveRow" style="display:none;margin-top:12px"><input type="checkbox" id="savedog" style="width:auto;margin-right:6px">Save this dog to my account</label>
     <button id="pay">Continue to secure payment</button>
   </div>
 </main>
@@ -123,7 +125,7 @@ function renderServices() {
 }
 
 $("pay").onclick = async () => {
-  const body = { service_id: selected, walk_date: $("date").value, walk_time: $("time").value, address: $("address").value, owner_name: $("owner").value, dog_name: $("dog").value, email: $("email").value, phone: $("phone").value, dog_notes: $("notes").value };
+  const body = { service_id: selected, walk_date: $("date").value, walk_time: $("time").value, address: $("address").value, owner_name: $("owner").value, dog_name: $("dog").value, email: $("email").value, phone: $("phone").value, dog_notes: $("notes").value, save_dog: $("savedog").checked };
   $("pay").disabled = true; $("pay").textContent = "One moment…";
   try {
     const r = await fetch(API + "/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -142,6 +144,21 @@ init();
       if (!$("email").value) $("email").value = s.user.email;
       if (!$("owner").value && s.user.name) $("owner").value = s.user.name;
       $("nav").innerHTML = '<a href="/account.html" style="color:var(--accent)">My bookings</a>';
+      $("saveRow").style.display = "block";
+      const dr = await fetch(API + "/account/dogs");
+      if (dr.ok) {
+        const dogs = await dr.json();
+        if (dogs.length) {
+          const sel = $("saved");
+          sel.innerHTML = '<option value="">Choose a saved dog…</option>';
+          dogs.forEach(d => { const o = document.createElement("option"); o.value = d.id; o.textContent = d.name; sel.appendChild(o); });
+          $("dogpick").style.display = "block";
+          sel.onchange = () => {
+            const d = dogs.find(x => String(x.id) === sel.value);
+            if (d) { $("dog").value = d.name; $("notes").value = d.notes || ""; $("savedog").checked = false; }
+          };
+        }
+      }
     }
   } catch (e) {}
 })();

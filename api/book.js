@@ -23,6 +23,9 @@ export default async function (req, res) {
     [svc.id, b.owner_name, b.email, b.phone || null, b.dog_name, b.dog_notes || null, b.address, b.walk_date, b.walk_time, user ? user.id : null]
   );
   const id = ins.rows[0].id;
+  if (user && b.save_dog) {
+    await db.query("INSERT INTO dogs (user_id, name, notes) SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM dogs WHERE user_id = $1 AND lower(name) = lower($2))", [user.id, b.dog_name, b.dog_notes || null]);
+  }
   const origin = "https://" + (req.headers.host || "paws-stride-dog.hatchable.site");
 
   try {
