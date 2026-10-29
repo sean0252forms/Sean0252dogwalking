@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in – Paws & Stride</title>
+<style>
+:root{--bg:#fbf7f0;--card:#fff;--ink:#2b2a28;--mute:#6f6a62;--accent:#2f7d5b;--accent2:#e9f3ee;--line:#e6dfd2}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1c1a;--card:#282623;--ink:#f1ede5;--mute:#a8a196;--accent:#59b88c;--accent2:#25362d;--line:#3a3733}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink);padding:16px}
+.box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px}
+h1{margin:0 0 6px;font-size:1.5rem}
+p{color:var(--mute);margin:0 0 18px;font-size:.95rem}
+label{display:block;font-size:.85rem;color:var(--mute);margin:12px 0 4px}
+input{width:100%;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+button{width:100%;margin-top:16px;padding:13px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button.ghost{background:transparent;color:var(--mute);font-weight:500;margin-top:8px}
+button:disabled{opacity:.6}
+.msg{margin-top:14px;font-size:.9rem;padding:10px 12px;border-radius:8px}
+.err{background:#fdecea;color:#8a1f17}
+.ok{background:var(--accent2)}
+a{color:var(--accent)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>🐾 Paws &amp; Stride</h1>
+
+  <section id="s-email">
+    <p>Sign in or create an account. New here? Just enter your email and we'll set you up.</p>
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username webauthn" required>
+    <button id="send">Email me a code</button>
+  </section>
+
+  <section id="s-code" class="hide">
+    <p>We sent a 6-digit code to <b id="sentTo"></b>.</p>
+    <label for="code">Code</label>
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+    <button id="verify">Sign in</button>
+    <button class="ghost" id="back">Use a different email</button>
+  </section>
+
+  <section id="s-passkey" class="hide">
+    <p>You're in! Add a passkey and next time you can sign in with your fingerprint, face or screen lock, no code needed.</p>
+    <button id="addPk">Add a passkey</button>
+    <button class="ghost" id="skipPk">Not now</button>
+  </section>
+
+  <div id="msg"></div>
+  <p style="margin:18px 0 0;text-align:center"><a href="/">← Back to booking</a></p>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const A = () => window.hatchable.auth;
+let hasPasskey = false;
+
+function next() {
+  const n = new URLSearchParams(location.search).get("next");
+  return n && n.startsWith("/") && !n.startsWith("//") ? n : "/account.html";
+}
+function show(id) { ["s-email", "s-code", "s-passkey"].forEach(s => $(s).classList.toggle("hide", s !== id)); }
+function say(t, cls) { const m = $("msg"); m.textContent = t || ""; m.className = t ? "msg " + cls : ""; }
+function fail(e) { say(e && e.status === 429 ? "Too many attempts. Please wait a moment and try again." : (e && e.message) || "Something went wrong.", "err"); }
+
+async function finish() {
+  const offer = !hasPasskey && A().supportsPasskeys() && localStorage.getItem("passkey_offer_declined") !== "1";
+  if (offer) { show("s-passkey"); say(""); } else location.href = next();
+}
+
+$("send").onclick = async () => {
+  const email = $("email").value.trim();
+  if (!email) return say("Enter your email.", "err");
+  $("send").disabled = true; say("");
+  try {
+    const r = await A().startLogin({ email });
+    hasPasskey = !!(r && r.has_passkey);
+    if (hasPasskey && A().supportsPasskeys()) {
+      try { await A().signInWithPasskey({ email }); return location.href = next(); } catch (e) {}
+    }
+    $("sentTo").textContent = email; show("s-code"); $("code").focus();
+  } catch (e) { fail(e); }
+  $("send").disabled = false;
+};
+
+$("verify").onclick = async () => {
+  $("verify").disabled = true; say("");
+  try { await A().verifyCode({ email: $("email").value.trim(), code: $("code").value.trim() }); await finish(); }
+  catch (e) { fail(e); }
+  $("verify").disabled = false;
+};
+
+$("back").onclick = () => { show("s-email"); say(""); };
+$("addPk").onclick = async () => {
+  const saved = await A().registerPasskey().catch(() => null);
+  if (!saved) localStorage.setItem("passkey_offer_declined", "1");
+  location.href = next();
+};
+$("skipPk").onclick = () => { localStorage.setItem("passkey_offer_declined", "1"); location.href = next(); };
+["email", "code"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") $(id === "email" ? "send" : "verify").click(); }));
+
+(async () => {
+  try { const s = await A().getSession(); if (s && s.user) location.href = next(); } catch (e) {}
+})();
+</script>
+</body>
+</html>

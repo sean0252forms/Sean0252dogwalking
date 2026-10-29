@@ -2,3 +2,7 @@
 name = "stripe"
 base_url = "https://api.stripe.com"
 encoding = "form"
+
+[auth]
+enabled = true
+providers = ["email"]

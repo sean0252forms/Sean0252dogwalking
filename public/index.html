@@ -33,6 +33,7 @@ button:disabled{opacity:.6}
 <header>
   <h1>🐾 Paws &amp; Stride</h1>
   <p>Reliable neighborhood dog walks. Book and pay online in a minute.</p>
+  <p id="nav" style="margin-top:10px"><a href="/login" style="color:var(--accent)">Sign in / Sign up</a></p>
 </header>
 <main>
   <div id="banner"></div>
@@ -134,6 +135,16 @@ $("pay").onclick = async () => {
   $("pay").disabled = false; $("pay").textContent = "Continue to secure payment";
 };
 init();
+(async () => {
+  try {
+    const s = await window.hatchable.auth.getSession();
+    if (s && s.user) {
+      if (!$("email").value) $("email").value = s.user.email;
+      if (!$("owner").value && s.user.name) $("owner").value = s.user.name;
+      $("nav").innerHTML = '<a href="/account.html" style="color:var(--accent)">My bookings</a>';
+    }
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>
