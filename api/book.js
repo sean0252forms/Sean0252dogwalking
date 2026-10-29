@@ -14,6 +14,8 @@ export default async function (req, res) {
   if (new Date(b.walk_date) < new Date(new Date().toDateString())) {
     return res.status(400).json({ error: "Pick a date in the future" });
   }
+  const blocked = await db.query("SELECT reason FROM blocked_days WHERE day = $1::date", [b.walk_date]);
+  if (blocked.rows.length) return res.status(400).json({ error: "Sorry, we're unavailable on that date. Please pick another day." });
 
   const ins = await db.query(
     "INSERT INTO bookings (service_id, owner_name, email, phone, dog_name, dog_notes, address, walk_date, walk_time) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",

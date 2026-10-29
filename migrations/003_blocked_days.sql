@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS blocked_days (day DATE PRIMARY KEY, reason TEXT)

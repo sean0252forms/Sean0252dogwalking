@@ -1,4 +1,5 @@
 import { db, api } from "hatchable";
+import { sendConfirmation } from "lib/mail.js";
 
 export const access = "public";
 export const methods = ["GET"];
@@ -14,6 +15,7 @@ export default async function (req, res) {
     if (s.payment_status === "paid") {
       await db.query("UPDATE bookings SET status = 'paid' WHERE id = $1", [id]);
       bk.status = "paid";
+      await sendConfirmation(bk.id);
     }
   } catch (e) {}
   res.json({ id: bk.id, status: bk.status, service: bk.service, dog_name: bk.dog_name, walk_date: bk.walk_date, walk_time: bk.walk_time });

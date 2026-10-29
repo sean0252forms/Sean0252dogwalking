@@ -66,7 +66,13 @@ button:disabled{opacity:.6}
 <script>
 const API = window.__HATCHABLE__ ? window.__HATCHABLE__.api : "/api";
 const $ = id => document.getElementById(id);
-let services = [], selected = null;
+let services = [], selected = null, blocked = [];
+function checkBlocked() {
+  const hit = blocked.find(b => b.day === $("date").value);
+  $("pay").disabled = !!hit;
+  if (hit) banner("Sorry, we're unavailable on that date" + (hit.reason ? " (" + hit.reason + ")" : "") + ". Please pick another day.", "err");
+  else if ($("banner").textContent.includes("unavailable")) $("banner").textContent = "";
+}
 const money = c => "$" + (c / 100).toFixed(2);
 
 function banner(text, cls) { $("banner").innerHTML = '<div class="msg ' + cls + '"></div>'; $("banner").firstChild.textContent = text; }
@@ -81,9 +87,11 @@ async function init() {
   $("date").min = $("date").value = d.toISOString().slice(0, 10);
 
   services = await (await fetch(API + "/services")).json();
+  try { blocked = await (await fetch(API + "/blocked")).json(); } catch (e) {}
+  $("date").onchange = checkBlocked;
   selected = services[1] ? services[1].id : services[0].id;
   renderServices();
-
+  checkBlocked();
   const p = new URLSearchParams(location.search);
   if (p.get("paid") && p.get("session_id")) {
     const r = await fetch(API + "/confirm?id=" + encodeURIComponent(p.get("paid")) + "&session_id=" + encodeURIComponent(p.get("session_id")));

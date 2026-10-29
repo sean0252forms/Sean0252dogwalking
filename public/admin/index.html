@@ -46,7 +46,7 @@ button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 <script>
 const API = window.__HATCHABLE__ ? window.__HATCHABLE__.api : "/api";
 const $ = id => document.getElementById(id);
-let all = [], view = "calendar", filter = "all";
+let all = [], view = "calendar", filter = "all", blocked = [];
 let cur = new Date(); cur.setDate(1);
 let selDay = null;
 const ymd = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -62,6 +62,7 @@ async function load() {
   }
   if (!r.ok) { $("app").textContent = "Couldn't load bookings."; return; }
   all = await r.json();
+  try { blocked = await (await fetch(API + "/blocked")).json(); } catch (e) {}
   selDay = ymd(new Date());
   render();
 }
@@ -86,6 +87,7 @@ function render() {
   app.append(bar);
 
   if (view === "calendar") renderCal(app); else renderList(app, visible(), "All bookings");
+  renderBlocked(app);
 }
 
 function renderCal(app) {
@@ -106,6 +108,8 @@ function renderCal(app) {
     const d = new Date(start); d.setDate(start.getDate() + i);
     const k = ymd(d), c = el("div", "day" + (d.getMonth() !== cur.getMonth() ? " off" : "") + (k === todayS ? " today" : "") + (k === selDay ? " sel" : ""));
     c.append(el("div", "n", d.getDate()));
+    const bl = blocked.find(x => x.day === k);
+    if (bl) c.append(el("span", "chip cancelled", "Blocked" + (bl.reason ? ": " + bl.reason : "")));
     (by[k] || []).slice(0, 3).forEach(b => c.append(el("span", "chip " + b.status, b.walk_time + " " + b.dog_name)));
     if ((by[k] || []).length > 3) c.append(el("span", "n", "+" + (by[k].length - 3) + " more"));
     c.onclick = () => { selDay = k; render(); };
@@ -138,6 +142,33 @@ function renderList(app, rows, title) {
     });
     r.append(act); card.append(r);
   });
+  app.append(card);
+}
+async function blockCall(body) {
+  const x = await fetch(API + "/admin/block", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!x.ok) { alert("Update failed"); return; }
+  blocked = await (await fetch(API + "/blocked")).json();
+  render();
+}
+
+function renderBlocked(app) {
+  const card = el("div", "card");
+  card.append(el("b", "", "Blocked days"), el("small", "", " – customers can't book these dates"));
+  const form = el("div", "bar"); form.style.marginTop = "10px";
+  const d = el("input"); d.type = "date"; d.min = ymd(new Date()); if (selDay) d.value = selDay;
+  const why = el("input"); why.placeholder = "Reason (optional)";
+  [d, why].forEach(i => { i.style.cssText = "font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)"; });
+  const add = el("button", "on", "Block day");
+  add.onclick = () => { if (d.value) blockCall({ day: d.value, reason: why.value }); };
+  form.append(d, why, add); card.append(form);
+  blocked.forEach(b => {
+    const r = el("div", "bk");
+    r.append(el("b", "", b.day), el("small", "", b.reason || "No reason given"));
+    const rm = el("button", "", "Unblock"); rm.style.marginTop = "6px";
+    rm.onclick = () => blockCall({ day: b.day, remove: true });
+    r.append(rm); card.append(r);
+  });
+  if (!blocked.length) card.append(el("small", "", "No upcoming blocked days."));
   app.append(card);
 }
 load();
