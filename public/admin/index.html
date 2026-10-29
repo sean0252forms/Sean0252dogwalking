@@ -46,7 +46,7 @@ button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 <script>
 const API = window.__HATCHABLE__ ? window.__HATCHABLE__.api : "/api";
 const $ = id => document.getElementById(id);
-let all = [], view = "calendar", filter = "all", blocked = [];
+let all = [], view = "calendar", filter = "all", blocked = [], blockedTimes = [];
 let cur = new Date(); cur.setDate(1);
 let selDay = null;
 const ymd = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -63,6 +63,7 @@ async function load() {
   if (!r.ok) { $("app").textContent = "Couldn't load bookings."; return; }
   all = await r.json();
   try { blocked = await (await fetch(API + "/blocked")).json(); } catch (e) {}
+  try { blockedTimes = await (await fetch(API + "/blocked-times")).json(); } catch (e) {}
   selDay = ymd(new Date());
   render();
 }
@@ -88,6 +89,7 @@ function render() {
 
   if (view === "calendar") renderCal(app); else renderList(app, visible(), "All bookings");
   renderBlocked(app);
+  renderTimes(app);
 }
 
 function renderCal(app) {
@@ -110,6 +112,8 @@ function renderCal(app) {
     c.append(el("div", "n", d.getDate()));
     const bl = blocked.find(x => x.day === k);
     if (bl) c.append(el("span", "chip cancelled", "Blocked" + (bl.reason ? ": " + bl.reason : "")));
+    const nt = blockedTimes.filter(x => x.day === k).length;
+    if (nt && !bl) c.append(el("span", "chip cancelled", nt + " slots blocked"));
     (by[k] || []).slice(0, 3).forEach(b => c.append(el("span", "chip " + b.status, b.walk_time + " " + b.dog_name)));
     if ((by[k] || []).length > 3) c.append(el("span", "n", "+" + (by[k].length - 3) + " more"));
     c.onclick = () => { selDay = k; render(); };
@@ -146,23 +150,33 @@ function renderList(app, rows, title) {
   });
   app.append(card);
 }
-async function blockCall(body) {
-  const x = await fetch(API + "/admin/block", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+async function blockCall(body, path) {
+  const x = await fetch(API + (path || "/admin/block"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   if (!x.ok) { alert("Update failed"); return; }
+  const j = await x.json().catch(() => ({}));
   blocked = await (await fetch(API + "/blocked")).json();
+  blockedTimes = await (await fetch(API + "/blocked-times")).json();
+  if (j.affected) alert(j.affected + " existing booking(s) fall in this range. They were not cancelled, so review them in the calendar.");
   render();
 }
 
 function renderBlocked(app) {
   const card = el("div", "card");
-  card.append(el("b", "", "Blocked days"), el("small", "", " – customers can't book these dates"));
+  card.append(el("b", "", "Blocked days"), el("small", "", " – block one day or a range (leave \"to\" empty for a single day)"));
+  const sty = i => { i.style.cssText = "font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)"; return i; };
   const form = el("div", "bar"); form.style.marginTop = "10px";
-  const d = el("input"); d.type = "date"; d.min = ymd(new Date()); if (selDay) d.value = selDay;
-  const why = el("input"); why.placeholder = "Reason (optional)";
-  [d, why].forEach(i => { i.style.cssText = "font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)"; });
-  const add = el("button", "on", "Block day");
-  add.onclick = () => { if (d.value) blockCall({ day: d.value, reason: why.value }); };
-  form.append(d, why, add); card.append(form);
+  const d = sty(el("input")); d.type = "date"; d.min = ymd(new Date()); if (selDay) d.value = selDay;
+  const d2 = sty(el("input")); d2.type = "date"; d2.min = d.min;
+  const why = sty(el("input")); why.placeholder = "Reason (optional)";
+  const go = remove => {
+    if (!d.value) return alert("Pick a start date");
+    const to = d2.value || d.value;
+    if (to < d.value) return alert("The end date is before the start date");
+    blockCall({ from: d.value, to, reason: why.value, remove });
+  };
+  const add = el("button", "on", "Block"); add.onclick = () => go(false);
+  const rem = el("button", "", "Unblock range"); rem.onclick = () => go(true);
+  form.append(d, el("span", "", "to"), d2, why, add, rem); card.append(form);
   blocked.forEach(b => {
     const r = el("div", "bk");
     r.append(el("b", "", b.day), el("small", "", b.reason || "No reason given"));
@@ -171,6 +185,48 @@ function renderBlocked(app) {
     r.append(rm); card.append(r);
   });
   if (!blocked.length) card.append(el("small", "", "No upcoming blocked days."));
+  app.append(card);
+}
+const TSLOTS = [];
+for (let h = 7; h <= 19; h++) for (const m of ["00", "30"]) { if (h === 19 && m === "30") continue; TSLOTS.push(String(h).padStart(2, "0") + ":" + m); }
+const lab = t => { const [h, m] = t.split(":").map(Number); return (h > 12 ? h - 12 : h) + ":" + String(m).padStart(2, "0") + (h >= 12 ? " PM" : " AM"); };
+const nxt = t => { let [h, m] = t.split(":").map(Number); m += 30; if (m >= 60) { h++; m = 0; } return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); };
+
+function renderTimes(app) {
+  const card = el("div", "card");
+  card.append(el("b", "", "Blocked times"), el("small", "", " – block part of a day, e.g. a vet appointment"));
+  const sty = i => { i.style.cssText = "font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)"; return i; };
+  const form = el("div", "bar"); form.style.marginTop = "10px";
+  const d = sty(el("input")); d.type = "date"; d.min = ymd(new Date()); if (selDay) d.value = selDay;
+  const f = sty(el("select")), t = sty(el("select"));
+  TSLOTS.slice(0, -1).forEach(v => { const o = el("option", "", lab(v)); o.value = v; f.append(o); });
+  TSLOTS.slice(1).forEach(v => { const o = el("option", "", lab(v)); o.value = v; t.append(o); });
+  f.value = "09:00"; t.value = "12:00";
+  const why = sty(el("input")); why.placeholder = "Reason (optional)";
+  const add = el("button", "on", "Block times");
+  add.onclick = () => {
+    if (!d.value) return alert("Pick a date");
+    if (t.value <= f.value) return alert("The end time must be after the start time");
+    blockCall({ day: d.value, from: f.value, to: t.value, reason: why.value }, "/admin/block-times");
+  };
+  form.append(d, el("span", "", "from"), f, el("span", "", "to"), t, why, add); card.append(form);
+
+  const byDay = {};
+  blockedTimes.forEach(x => (byDay[x.day] = byDay[x.day] || []).push(x.time));
+  Object.keys(byDay).sort().forEach(day => {
+    const ts = byDay[day].sort(); let start = ts[0], prev = ts[0]; const ranges = [];
+    for (let i = 1; i <= ts.length; i++) {
+      if (ts[i] && ts[i] === nxt(prev)) { prev = ts[i]; continue; }
+      ranges.push([start, nxt(prev)]); start = ts[i]; prev = ts[i];
+    }
+    ranges.forEach(([a, b]) => {
+      const r = el("div", "bk"); r.append(el("b", "", day + " · " + lab(a) + " – " + lab(b)));
+      const rm = el("button", "", "Unblock"); rm.style.marginLeft = "8px";
+      rm.onclick = () => blockCall({ day, from: a, to: b, remove: true }, "/admin/block-times");
+      r.append(rm); card.append(r);
+    });
+  });
+  if (!blockedTimes.length) card.append(el("small", "", "No upcoming blocked times."));
   app.append(card);
 }
 load();

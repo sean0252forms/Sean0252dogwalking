@@ -16,6 +16,8 @@ export default async function (req, res) {
   }
   const blocked = await db.query("SELECT reason FROM blocked_days WHERE day = $1::date", [b.walk_date]);
   if (blocked.rows.length) return res.status(400).json({ error: "Sorry, we're unavailable on that date. Please pick another day." });
+  const bt = await db.query("SELECT 1 FROM blocked_times WHERE day = $1::date AND time = $2", [b.walk_date, b.walk_time]);
+  if (bt.rows.length) return res.status(400).json({ error: "Sorry, that time isn't available. Please pick another time." });
 
   const user = await auth.getUser(req);
   const ins = await db.query(

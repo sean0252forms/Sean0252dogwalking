@@ -19,6 +19,8 @@ export default async function (req, res) {
   if (!bk.new_ok) return res.status(400).json({ error: "Pick a date in the future." });
   const blocked = await db.query("SELECT 1 FROM blocked_days WHERE day = $1::date", [walk_date]);
   if (blocked.rows.length) return res.status(400).json({ error: "We're unavailable on that date. Please pick another day." });
+  const bt = await db.query("SELECT 1 FROM blocked_times WHERE day = $1::date AND time = $2", [walk_date, walk_time]);
+  if (bt.rows.length) return res.status(400).json({ error: "That time isn't available. Please pick another time." });
   await db.query("UPDATE bookings SET walk_date = $1::date, walk_time = $2 WHERE id = $3", [walk_date, walk_time, id]);
   await notify(id, "Booking #" + id + " rescheduled", "Your walk has been moved to the new date and time below.");
   res.json({ ok: true });

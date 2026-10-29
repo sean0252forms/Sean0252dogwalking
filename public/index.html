@@ -69,11 +69,26 @@ button:disabled{opacity:.6}
 <script>
 const API = window.__HATCHABLE__ ? window.__HATCHABLE__.api : "/api";
 const $ = id => document.getElementById(id);
-let services = [], selected = null, blocked = [];
+let services = [], selected = null, blocked = [], blockedTimes = [];
+function markTimes() {
+  const d = $("date").value; let firstOk = null;
+  [...$("time").options].forEach(o => {
+    const off = blockedTimes.some(x => x.day === d && x.time === o.value);
+    o.disabled = off;
+    if (!o.dataset.l) o.dataset.l = o.textContent;
+    o.textContent = o.dataset.l + (off ? " (unavailable)" : "");
+    if (!off && !firstOk) firstOk = o;
+  });
+  const cur = $("time").selectedOptions[0];
+  if (cur && cur.disabled && firstOk) $("time").value = firstOk.value;
+}
 function checkBlocked() {
   const hit = blocked.find(b => b.day === $("date").value);
-  $("pay").disabled = !!hit;
-  if (hit) banner("Sorry, we're unavailable on that date" + (hit.reason ? " (" + hit.reason + ")" : "") + ". Please pick another day.", "err");
+  markTimes();
+  const allOff = [...$("time").options].every(o => o.disabled);
+  $("pay").disabled = !!hit || allOff;
+  if (!hit && allOff) banner("Sorry, we're unavailable all day on that date. Please pick another day.", "err");
+  else if (hit) banner("Sorry, we're unavailable on that date" + (hit.reason ? " (" + hit.reason + ")" : "") + ". Please pick another day.", "err");
   else if ($("banner").textContent.includes("unavailable")) $("banner").textContent = "";
 }
 const money = c => "$" + (c / 100).toFixed(2);
@@ -91,6 +106,7 @@ async function init() {
 
   services = await (await fetch(API + "/services")).json();
   try { blocked = await (await fetch(API + "/blocked")).json(); } catch (e) {}
+  try { blockedTimes = await (await fetch(API + "/blocked-times")).json(); } catch (e) {}
   $("date").onchange = checkBlocked;
   selected = services[1] ? services[1].id : services[0].id;
   renderServices();
