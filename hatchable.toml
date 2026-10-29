@@ -1,0 +1,4 @@
+[[api]]
+name = "stripe"
+base_url = "https://api.stripe.com"
+encoding = "form"

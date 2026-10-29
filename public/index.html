@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paws & Stride – Dog Walking</title>
+<style>
+:root{--bg:#fbf7f0;--card:#fff;--ink:#2b2a28;--mute:#6f6a62;--accent:#2f7d5b;--accent2:#e9f3ee;--line:#e6dfd2}
+@media (prefers-color-scheme:dark){:root{--bg:#1d1c1a;--card:#282623;--ink:#f1ede5;--mute:#a8a196;--accent:#59b88c;--accent2:#25362d;--line:#3a3733}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5}
+header{padding:48px 20px 24px;text-align:center}
+h1{margin:0 0 8px;font-size:2rem}
+header p{margin:0;color:var(--mute)}
+main{max-width:640px;margin:0 auto;padding:0 16px 64px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px}
+h2{margin:0 0 12px;font-size:1.1rem}
+.svc{display:flex;justify-content:space-between;gap:12px;align-items:center;border:2px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer}
+.svc.sel{border-color:var(--accent);background:var(--accent2)}
+.svc small{color:var(--mute);display:block}
+.price{font-weight:700;white-space:nowrap}
+label{display:block;font-size:.85rem;color:var(--mute);margin:12px 0 4px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:10px;background:var(--accent);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button:disabled{opacity:.6}
+.msg{padding:12px 14px;border-radius:10px;margin-bottom:16px}
+.ok{background:var(--accent2);border:1px solid var(--accent)}
+.err{background:#fdecea;color:#8a1f17;border:1px solid #e5a9a3}
+</style>
+</head>
+<body>
+<header>
+  <h1>🐾 Paws &amp; Stride</h1>
+  <p>Reliable neighborhood dog walks. Book and pay online in a minute.</p>
+</header>
+<main>
+  <div id="banner"></div>
+  <div class="card">
+    <h2>1. Choose a walk</h2>
+    <div id="services">Loading…</div>
+  </div>
+  <div class="card">
+    <h2>2. When &amp; where</h2>
+    <div class="row">
+      <div><label for="date">Date</label><input type="date" id="date"></div>
+      <div><label for="time">Start time</label>
+        <select id="time"></select></div>
+    </div>
+    <label for="address">Pickup address</label><input id="address" autocomplete="street-address">
+  </div>
+  <div class="card">
+    <h2>3. About you &amp; your dog</h2>
+    <div class="row">
+      <div><label for="owner">Your name</label><input id="owner" autocomplete="name"></div>
+      <div><label for="dog">Dog's name</label><input id="dog"></div>
+    </div>
+    <div class="row">
+      <div><label for="email">Email</label><input type="email" id="email" autocomplete="email"></div>
+      <div><label for="phone">Phone (optional)</label><input type="tel" id="phone" autocomplete="tel"></div>
+    </div>
+    <label for="notes">Notes (leash habits, allergies, gate codes)</label><textarea id="notes" rows="3"></textarea>
+    <button id="pay">Continue to secure payment</button>
+  </div>
+</main>
+<script>
+const API = window.__HATCHABLE__ ? window.__HATCHABLE__.api : "/api";
+const $ = id => document.getElementById(id);
+let services = [], selected = null;
+const money = c => "$" + (c / 100).toFixed(2);
+
+function banner(text, cls) { $("banner").innerHTML = '<div class="msg ' + cls + '"></div>'; $("banner").firstChild.textContent = text; }
+
+async function init() {
+  const t = $("time");
+  for (let h = 7; h <= 18; h++) for (const m of ["00", "30"]) {
+    const v = String(h).padStart(2, "0") + ":" + m, o = document.createElement("option");
+    o.value = v; o.textContent = (h > 12 ? h - 12 : h) + ":" + m + (h >= 12 ? " PM" : " AM"); t.appendChild(o);
+  }
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  $("date").min = $("date").value = d.toISOString().slice(0, 10);
+
+  services = await (await fetch(API + "/services")).json();
+  selected = services[1] ? services[1].id : services[0].id;
+  renderServices();
+
+  const p = new URLSearchParams(location.search);
+  if (p.get("paid") && p.get("session_id")) {
+    const r = await fetch(API + "/confirm?id=" + encodeURIComponent(p.get("paid")) + "&session_id=" + encodeURIComponent(p.get("session_id")));
+    const j = await r.json();
+    if (j.status === "paid") banner("Payment received! " + j.dog_name + "'s " + j.service + " is booked for " + String(j.walk_date).slice(0, 10) + " at " + j.walk_time + ". Booking #" + j.id + ".", "ok");
+    else banner("We couldn't confirm your payment yet. Booking #" + p.get("paid") + " is saved as pending.", "err");
+    history.replaceState(null, "", "/");
+  } else if (p.get("cancelled")) {
+    banner("Payment cancelled. Your request is saved but not confirmed until paid.", "err");
+    history.replaceState(null, "", "/");
+  }
+}
+
+function renderServices() {
+  $("services").innerHTML = "";
+  services.forEach(s => {
+    const el = document.createElement("div");
+    el.className = "svc" + (s.id === selected ? " sel" : "");
+    const left = document.createElement("div");
+    const b = document.createElement("b"); b.textContent = s.name + " · " + s.minutes + " min";
+    const sm = document.createElement("small"); sm.textContent = s.description;
+    left.append(b, sm);
+    const pr = document.createElement("div"); pr.className = "price"; pr.textContent = money(s.price_cents);
+    el.append(left, pr);
+    el.onclick = () => { selected = s.id; renderServices(); };
+    $("services").appendChild(el);
+  });
+}
+
+$("pay").onclick = async () => {
+  const body = { service_id: selected, walk_date: $("date").value, walk_time: $("time").value, address: $("address").value, owner_name: $("owner").value, dog_name: $("dog").value, email: $("email").value, phone: $("phone").value, dog_notes: $("notes").value };
+  $("pay").disabled = true; $("pay").textContent = "One moment…";
+  try {
+    const r = await fetch(API + "/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (r.ok && j.checkout_url) { location.href = j.checkout_url; return; }
+    banner(j.error || "Something went wrong.", "err");
+    scrollTo(0, 0);
+  } catch (e) { banner("Network error. Please try again.", "err"); }
+  $("pay").disabled = false; $("pay").textContent = "Continue to secure payment";
+};
+init();
+</script>
+</body>
+</html>

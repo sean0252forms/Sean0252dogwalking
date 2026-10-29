@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS services (id SERIAL PRIMARY KEY, name TEXT NOT NULL, description TEXT, minutes INT NOT NULL, price_cents INT NOT NULL)

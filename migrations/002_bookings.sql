@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS bookings (id SERIAL PRIMARY KEY, service_id INT NOT NULL, owner_name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT, dog_name TEXT NOT NULL, dog_notes TEXT, address TEXT NOT NULL, walk_date DATE NOT NULL, walk_time TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', stripe_session TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now())
